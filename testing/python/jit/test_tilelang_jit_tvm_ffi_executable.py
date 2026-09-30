@@ -7,7 +7,6 @@ import torch
 from tilelang import tvm
 from tilelang.jit.kernel import JITKernel
 from tilelang.jit.abi import prepare_tvm_ffi_callee_allocated_outputs
-from tilelang.jit.adapter import tvm_ffi as tvm_ffi_adapter
 from tilelang.jit.adapter.tvm_ffi import TVMFFIKernelAdapter
 
 tirx = tvm.tirx
@@ -65,7 +64,7 @@ def test_adapter_initialization_does_not_probe_runtime(monkeypatch, callee_alloc
         pytest.fail("Runtime device resolution must be deferred until kernel invocation.")
 
     monkeypatch.setattr(adapter, "get_current_device_functor", unexpected_runtime_probe)
-    monkeypatch.setattr(tvm_ffi_adapter, "_install_torch_stream_exchange", unexpected_runtime_probe)
+    monkeypatch.setattr(adapter, "_prepare_torch_device", unexpected_runtime_probe)
 
     adapter._post_init()
     assert callable(adapter.func)

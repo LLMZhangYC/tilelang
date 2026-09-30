@@ -6,7 +6,7 @@ from tilelang import tvm
 import tilelang.ascend.language as T
 from tilelang.backend.target import determine_target
 from tilelang.engine.lower import lower
-from tilelang.jit.adapter.wrapper import TLPTOSourceWrapper
+from tilelang.jit.adapter.pto.wrapper import TLPTOSourceWrapper
 
 
 def _two_kernel_program():

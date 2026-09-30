@@ -7,7 +7,7 @@ import pytest
 from tvm.target import Target
 
 from tilelang.contrib import bisheng
-from tilelang.jit.adapter import libgen
+from tilelang.jit.adapter.ascend import libgen
 from tilelang.jit import kernel as jit_kernel
 from tilelang.transform import PassConfigKey
 
@@ -61,14 +61,14 @@ def test_cython_compile_preserves_target_and_options(monkeypatch, tmp_path, conf
         captured_command.extend(command)
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(libgen.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     target = Target({"kind": "ascend", "arch": "dav-target"})
     pass_configs = {PassConfigKey.TL_DEVICE_COMPILE_FLAGS: configured_flags}
     source = 'extern "C" void kernel() {}'
 
     def compile_library(**kwargs):
-        generator = libgen.LibraryGenerator(kwargs["target"])
+        generator = libgen.AscendLibraryGenerator(kwargs["target"])
         generator.assign_pass_configs(kwargs["pass_configs"])
         generator.assign_compile_flags(kwargs["compile_flags"])
         generator.update_lib_code(kwargs["device_kernel_source"])
@@ -85,7 +85,7 @@ def test_cython_compile_preserves_target_and_options(monkeypatch, tmp_path, conf
         kernel.compile_flags = compile_flags
         artifact = SimpleNamespace(params=[], host_mod=None, device_mod=None, kernel_source=source)
         monkeypatch.setattr(kernel, "_compile_artifact", lambda *args: artifact)
-        monkeypatch.setattr(jit_kernel, "CythonKernelAdapter", compile_library)
+        monkeypatch.setattr(jit_kernel, "get_cython_adapter_class", lambda target: compile_library)
         kernel._compile_and_create_adapter(SimpleNamespace(attrs={"global_symbol": "kernel"}), [])
     else:
         compile_library(target=target, pass_configs=pass_configs, compile_flags=compile_flags, device_kernel_source=source)
