@@ -16,7 +16,7 @@ from tilelang.autotuner.param import CompileArgs
 from tilelang.backend.module import create_backend_context
 from tilelang.engine.lower import lower_to_host_device_ir, device_codegen, host_codegen
 from tilelang.engine.param import CompiledArtifact
-from tilelang.jit.adapter import get_tvm_ffi_adapter_class
+from tilelang.jit.adapter import TVMFFIKernelAdapter
 from tilelang.jit.abi import prepare_tvm_ffi_callee_allocated_outputs
 from tilelang.jit.kernel import JITKernel
 from tilelang.transform import PassConfigKey
@@ -161,7 +161,7 @@ def compile_grouped_unit_tvm_ffi(
                         rt_mod=host_rt_mod,
                     )
 
-                    adapter = get_tvm_ffi_adapter_class(item["target"])(
+                    adapter = TVMFFIKernelAdapter(
                         params=artifact.params,
                         result_idx=item["output_indices"],
                         target=item["target"],
