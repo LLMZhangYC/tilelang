@@ -67,3 +67,25 @@ def test_native_ascend_kind_drives_backend_identity():
     assert get_backend("ascend").get_pipeline(target).name == "ascend"
     assert get_backend("ascend").get_device_codegen(target).name == "ascend"
     assert get_backend("ascend").resolve_execution_backend("auto", target).name == "tvm_ffi"
+
+
+@pytest.mark.parametrize("execution_backend", ["auto", "pto"])
+def test_pto_execution_backend_and_cache_dispatch(execution_backend):
+    from tilelang.cache import _resolve_cache_dispatch
+    from tilelang.jit.adapter.cython.kernel_cache import CythonKernelCache
+
+    cache, context, _ = _resolve_cache_dispatch("pto", None, execution_backend, False)
+    assert context.module.name == "pto"
+    assert context.execution_backend.name == "pto"
+    assert context.module.allowed_execution_backends(context.target) == ("pto",)
+    assert not context.execution_backend.enable_host_codegen
+    assert not context.execution_backend.enable_device_compile
+    assert isinstance(cache, CythonKernelCache)
+
+
+@pytest.mark.parametrize("execution_backend", ["cython", "tvm_ffi"])
+def test_pto_rejects_other_execution_backends(execution_backend):
+    from tilelang.backend.module import create_backend_context
+
+    with pytest.raises(ValueError, match="Allowed: pto"):
+        create_backend_context("pto", execution_backend=execution_backend)
