@@ -5,11 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from tilelang import tvm
-from tilelang.jit.adapter import get_cython_adapter_class, get_tvm_ffi_adapter_class
-from tilelang.jit.adapter.ascend.adapter import AscendCythonKernelAdapter
-from tilelang.jit.adapter.ascend.libgen import AscendLibraryGenerator
-from tilelang.jit.adapter.ascend import tvm_ffi as ascend_ffi
-from tilelang.jit.adapter.ascend.tvm_ffi import AscendTVMFFIKernelAdapter
+from tilelang.jit.adapter import get_cython_adapter_class, get_tvm_ffi_adapter_class, libgen
 from tilelang.jit.adapter.cython import adapter as cython_adapter
 from tilelang.jit.adapter.cython import CythonKernelAdapter
 from tilelang.jit.adapter.pto.adapter import PTOCythonKernelAdapter
@@ -25,7 +21,7 @@ from tilelang.jit.adapter.tvm_ffi import TVMFFIKernelAdapter
         ("cuda", (), CythonKernelAdapter, TVMFFIKernelAdapter),
         ("hip", (), CythonKernelAdapter, TVMFFIKernelAdapter),
         ("c", (), CythonKernelAdapter, TVMFFIKernelAdapter),
-        ("ascend", (), AscendCythonKernelAdapter, AscendTVMFFIKernelAdapter),
+        ("ascend", (), CythonKernelAdapter, TVMFFIKernelAdapter),
         ("ascend", ("pto",), PTOCythonKernelAdapter, PTOTVMFFIKernelAdapter),
     ],
 )
@@ -56,7 +52,7 @@ def test_pto_compilation_receives_device_and_host_sources(monkeypatch):
     assert compiled == [("host launcher", source, ["second", "first"])]
 
 
-@pytest.mark.parametrize("adapter_cls", [AscendCythonKernelAdapter, PTOCythonKernelAdapter])
+@pytest.mark.parametrize("adapter_cls", [CythonKernelAdapter, PTOCythonKernelAdapter])
 def test_cython_cache_load_uses_backend_generator(monkeypatch, adapter_cls):
     loaded = []
     generator_cls = adapter_cls.library_generator_class
@@ -119,14 +115,14 @@ def test_cython_cache_load_uses_backend_generator(monkeypatch, adapter_cls):
 @pytest.mark.parametrize("cached", [False, True])
 def test_npu_stream_exchange_is_lazy_and_installed_once(monkeypatch, cached):
     calls = []
-    monkeypatch.setattr(ascend_ffi, "_install_torch_stream_exchange", lambda: calls.append("install"))
+    monkeypatch.setattr(tvm_ffi, "_install_torch_stream_exchange", lambda: calls.append("install"))
     if cached:
         executable = object()
         monkeypatch.setattr(tvm_ffi.runtime, "load_module", lambda path: executable)
-        monkeypatch.setattr(AscendTVMFFIKernelAdapter, "_uses_ffi_callee_allocated_output_abi", lambda self: False)
-        monkeypatch.setattr(AscendTVMFFIKernelAdapter, "_process_dynamic_symbolic", lambda self: {})
-        monkeypatch.setattr(AscendTVMFFIKernelAdapter, "_post_init", lambda self: None)
-        adapter = AscendTVMFFIKernelAdapter.from_database(
+        monkeypatch.setattr(TVMFFIKernelAdapter, "_uses_ffi_callee_allocated_output_abi", lambda self: False)
+        monkeypatch.setattr(TVMFFIKernelAdapter, "_process_dynamic_symbolic", lambda self: {})
+        monkeypatch.setattr(TVMFFIKernelAdapter, "_post_init", lambda self: None)
+        adapter = TVMFFIKernelAdapter.from_database(
             params=[],
             result_idx=[],
             target="c",
@@ -137,7 +133,7 @@ def test_npu_stream_exchange_is_lazy_and_installed_once(monkeypatch, cached):
         )
         assert adapter.executable is executable
     else:
-        adapter = object.__new__(AscendTVMFFIKernelAdapter)
+        adapter = object.__new__(TVMFFIKernelAdapter)
 
     assert calls == []
     adapter._prepare_torch_device(SimpleNamespace(type="cpu"))
@@ -192,28 +188,29 @@ def test_pto_ffi_uses_storage_shape_for_its_target():
     assert seen == [target]
 
 
-def test_ascend_compile_keeps_repeated_flags_and_timeout(monkeypatch):
+def test_ascend_compile_keeps_repeated_flags_and_timeout(monkeypatch, tmp_path):
     from tilelang.contrib import bisheng
 
     target = SimpleNamespace(kind=SimpleNamespace(name="ascend"), keys=())
-    generator = AscendLibraryGenerator(target)
+    generator = libgen.LibraryGenerator(target)
     generator.assign_compile_flags(["-mllvm", "first=true", "-mllvm", "second=true"])
+    generator.update_lib_code("host launcher")
     monkeypatch.setattr(bisheng, "find_bisheng_path", lambda: "bisheng")
     monkeypatch.setattr(bisheng, "get_target_npu_arch", lambda target: "dav-test")
     monkeypatch.setattr(bisheng, "get_bisheng_compile_options", lambda arch: [f"--npu-arch={arch}"])
+    # Bisheng runs on Linux; do not invoke the Windows CUDA environment helper.
+    monkeypatch.setattr(libgen, "sys", SimpleNamespace(platform="linux"))
+    named_temp_file = libgen.tempfile.NamedTemporaryFile
+    monkeypatch.setattr(libgen.tempfile, "NamedTemporaryFile", lambda **kwargs: named_temp_file(dir=tmp_path, **kwargs))
     captured = []
 
-    def run_compile(command, src, libpath, timeout):
-        captured.append((command, libpath, timeout))
-        src.close()
-        # The fake compiler does not consume this file.
-        from pathlib import Path
+    def run(command, **kwargs):
+        captured.append((command, kwargs))
+        return SimpleNamespace(returncode=0)
 
-        Path(src.name).unlink()
-
-    monkeypatch.setattr(generator, "_run_compile", run_compile)
+    monkeypatch.setattr(libgen, "subprocess", SimpleNamespace(run=run))
     generator.compile_lib(timeout=12)
-    command, libpath, timeout = captured[0]
+    command, kwargs = captured[0]
     assert command[:6] == ["bisheng", "--npu-arch=dav-test", "-mllvm", "first=true", "-mllvm", "second=true"]
-    assert command[-2:] == ["-o", libpath]
-    assert timeout == 12
+    assert command[-2:] == ["-o", generator.libpath]
+    assert kwargs["timeout"] == 12

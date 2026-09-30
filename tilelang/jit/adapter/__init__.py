@@ -10,29 +10,21 @@ from .cutedsl import CuTeDSLKernelAdapter  # noqa: F401
 
 def get_cython_adapter_class(target: Target) -> type[CythonKernelAdapter]:
     """Select the source compiler and launcher for a normalized target."""
-    from .utils import is_ascend_target, is_pto_target
+    from .utils import is_pto_target
 
     if is_pto_target(target):
         from .pto.adapter import PTOCythonKernelAdapter
 
         return PTOCythonKernelAdapter
-    if is_ascend_target(target):
-        from .ascend.adapter import AscendCythonKernelAdapter
-
-        return AscendCythonKernelAdapter
     return CythonKernelAdapter
 
 
 def get_tvm_ffi_adapter_class(target: Target) -> type[TVMFFIKernelAdapter]:
     """Select target-specific tensor and stream interop without probing devices."""
-    from .utils import is_ascend_target, is_pto_target
+    from .utils import is_pto_target
 
     if is_pto_target(target):
         from .pto.tvm_ffi import PTOTVMFFIKernelAdapter
 
         return PTOTVMFFIKernelAdapter
-    if is_ascend_target(target):
-        from .ascend.tvm_ffi import AscendTVMFFIKernelAdapter
-
-        return AscendTVMFFIKernelAdapter
     return TVMFFIKernelAdapter
