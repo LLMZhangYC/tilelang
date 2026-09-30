@@ -85,7 +85,7 @@ def test_cython_compile_preserves_target_and_options(monkeypatch, tmp_path, conf
         kernel.compile_flags = compile_flags
         artifact = SimpleNamespace(params=[], host_mod=None, device_mod=None, kernel_source=source)
         monkeypatch.setattr(kernel, "_compile_artifact", lambda *args: artifact)
-        monkeypatch.setattr(jit_kernel, "get_cython_adapter_class", lambda target: compile_library)
+        monkeypatch.setattr(jit_kernel, "CythonKernelAdapter", compile_library)
         kernel._compile_and_create_adapter(SimpleNamespace(attrs={"global_symbol": "kernel"}), [])
     else:
         compile_library(target=target, pass_configs=pass_configs, compile_flags=compile_flags, device_kernel_source=source)
