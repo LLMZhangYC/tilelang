@@ -17,14 +17,3 @@ def get_cython_adapter_class(target: Target) -> type[CythonKernelAdapter]:
 
         return PTOCythonKernelAdapter
     return CythonKernelAdapter
-
-
-def get_tvm_ffi_adapter_class(target: Target) -> type[TVMFFIKernelAdapter]:
-    """Select target-specific tensor and stream interop without probing devices."""
-    from .utils import is_pto_target
-
-    if is_pto_target(target):
-        from .pto.tvm_ffi import PTOTVMFFIKernelAdapter
-
-        return PTOTVMFFIKernelAdapter
-    return TVMFFIKernelAdapter
